@@ -4,7 +4,7 @@ import cytoscape from 'cytoscape';
 import { Activity, Clock, IndianRupee, Server, Info, FileText, Cpu, Zap, ShieldAlert, BarChart2, Play, Square, Settings, ZoomIn, ZoomOut, RefreshCw, BookOpen } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 
-const SOCKET_URL = 'http://localhost:5000';
+const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'https://eco-supply-chain.onrender.com';
 
 const formatINR = (value) => {
   return new Intl.NumberFormat('en-IN', {
