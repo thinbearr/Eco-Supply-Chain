@@ -5,7 +5,10 @@ import time
 import random
 import threading
 import heapq
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+IST = timezone(timedelta(hours=5, minutes=30))
+def now_ist(): return datetime.now(IST)
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 from flask_cors import CORS
@@ -33,7 +36,7 @@ analytics_history = []
 insight_counter = 0
 
 def add_log(message):
-    entry = {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "message": message}
+    entry = {"timestamp": now_ist().strftime("%Y-%m-%d %H:%M:%S"), "message": message}
     logs.append(entry)
     socketio.emit('new_log', entry)
     if len(logs) > 50:
@@ -168,7 +171,7 @@ def recalculate_route(event_reason="System Initialization"):
     })
     
     record = {
-        "time": datetime.now().strftime("%H:%M:%S"),
+        "time": now_ist().strftime("%H:%M:%S"),
         "route_short": "".join([char for char in path_str if char.isalpha()]),
         "cost": metrics["cost"],
         "carbon": metrics["carbon"],
@@ -199,7 +202,7 @@ def process_incoming_data(target_id, new_data):
         "temp": new_data["temperature"],
         "congestion": new_data["congestion_level"],
         "carbon_factor": new_data["carbon_factor"],
-        "timestamp": datetime.now().strftime("%H:%M:%S")
+        "timestamp": now_ist().strftime("%H:%M:%S")
     })
 
 def generate_insights():
