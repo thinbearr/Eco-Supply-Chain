@@ -6,6 +6,7 @@ from datetime import datetime
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 from flask_cors import CORS
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -285,4 +286,5 @@ def handle_connect():
     socketio.emit('analytics_update', analytics_history)
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port, debug=False, use_reloader=False)
