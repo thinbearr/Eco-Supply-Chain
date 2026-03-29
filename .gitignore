@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.env
+.venv
+env.bak/
+venv.bak/
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Temporary & Local
+logs/
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# Build
+dist/
+build/
+*.egg-info/
