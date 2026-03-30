@@ -219,7 +219,7 @@ function App() {
               {payload.map((p, idx) => (
                 <div key={idx} className="flex items-center gap-3 justify-between">
                   <span style={{ color: p.color }} className="font-medium">{p.name}:</span>
-                  <span className="text-[#E6E6E6] font-mono font-bold">{p.value.toFixed(1)}</span>
+                  <span className="text-[#E6E6E6] font-mono font-bold">{(p.value || 0).toFixed(1)}</span>
                 </div>
               ))}
             </div>
@@ -244,7 +244,7 @@ function App() {
 
         <div className="flex items-center gap-6">
           <div className="flex flex-col items-end mr-4">
-             <div className="text-[18px] text-[#F97316] font-mono font-bold">CO2 Saved: {metrics.cumulative_carbon_saved.toFixed(0)} g</div>
+             <div className="text-[18px] text-[#F97316] font-mono font-bold">CO2 Saved: {(metrics.cumulative_carbon_saved || 0).toFixed(0)} g</div>
              <div className="text-[11px] text-[#9CA3AF] uppercase tracking-widest font-bold">vs Baseline Dijkstra</div>
           </div>
           <div className="text-[16px] text-[#9CA3AF] font-mono">{currentTime}</div>
@@ -299,7 +299,7 @@ function App() {
                             </div>
                             <div className="w-px h-10 bg-[#2A2A2A]"></div>
                             <div className="text-center w-1/2">
-                                <div className="text-[20px] font-bold text-[#10B981]">{metrics.static_vs_dynamic.dynamic.toFixed(1)}</div>
+                                <div className="text-[20px] font-bold text-[#10B981]">{(metrics.static_vs_dynamic?.dynamic || 0).toFixed(1)}</div>
                                 <div className="text-[10px] text-[#10B981]">IOT REAL-TIME</div>
                             </div>
                         </div>
@@ -346,8 +346,8 @@ function App() {
                   <h2 className="text-[22px] font-serif font-bold text-[#E6E6E6] mb-8 pb-4 border-b border-[#2A2A2A] flex items-center gap-3"><IndianRupee size={24} className="text-[#F97316]" /> Multi-Objective Matrix</h2>
                   <div className="space-y-6">
                     <div className="flex justify-between items-baseline"><span className="text-[#9CA3AF] font-medium">Cost Objective</span> <span className="text-[24px] font-bold text-[#E6E6E6] font-mono">{formatINR(metrics.cost)}</span></div>
-                    <div className="flex justify-between items-baseline"><span className="text-[#9CA3AF] font-medium">Time Objective</span> <span className="text-[20px] font-bold text-[#E6E6E6] font-mono">{metrics.delivery_time.toFixed(1)} m</span></div>
-                    <div className="flex justify-between items-baseline"><span className="text-[#9CA3AF] font-medium">Carbon Objective</span> <span className="text-[20px] font-bold text-[#10B981] font-mono">{metrics.carbon.toFixed(0)} CO2 g</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[#9CA3AF] font-medium">Time Objective</span> <span className="text-[20px] font-bold text-[#E6E6E6] font-mono">{(metrics.delivery_time || 0).toFixed(1)} m</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[#9CA3AF] font-medium">Carbon Objective</span> <span className="text-[20px] font-bold text-[#10B981] font-mono">{(metrics.carbon || 0).toFixed(0)} CO2 g</span></div>
                   </div>
                 </div>
               </div>
