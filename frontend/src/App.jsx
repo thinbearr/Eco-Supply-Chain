@@ -1,112 +1,42 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import cytoscape from 'cytoscape';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { 
-  Activity, Clock, IndianRupee, Server, Info, FileText, Cpu, Zap, 
-  ShieldAlert, BarChart2, Play, Square, Settings, ZoomIn, ZoomOut, 
-  RefreshCw, BookOpen, Layers, Target, Leaf, TrendingUp, Network, ZapOff 
+import {
+  Activity, IndianRupee, Server, Zap, Play, Network, ZapOff,
+  RefreshCw, Layers, Target, TrendingUp, BarChart2, Cpu, Wifi,
+  ThermometerSun, Gauge, Route, Timer
 } from 'lucide-react';
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
-  ResponsiveContainer, BarChart, Bar, Legend, Cell 
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
+  ResponsiveContainer, Legend
 } from 'recharts';
+import Pareto3D from './Pareto3D';
+import AnalyticsDashboard from './AnalyticsDashboard';
 
-const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'https://eco-supply-chain.onrender.com';
+const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+const formatINR = (v) => new Intl.NumberFormat('en-IN', { style:'currency', currency:'INR', minimumFractionDigits:2, maximumFractionDigits:2 }).format(v||0);
 
-const formatINR = (value) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value || 0);
+const ChartTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-[#12121a] border border-[#2a2a3a] p-3 shadow-lg rounded text-[12px]">
+      <p className="text-[#F97316] mb-1.5 font-bold font-mono">{label}</p>
+      {payload.map((p, i) => (
+        <div key={i} className="flex items-center gap-3 justify-between">
+          <span style={{ color: p.color }} className="font-medium text-[11px]">{p.name}:</span>
+          <span className="text-[#E6E6E6] font-mono font-bold">{(p.value||0).toFixed(1)}</span>
+        </div>
+      ))}
+    </div>
+  );
 };
 
-// 3D Pareto Scatter Plot Component using Three.js
-function Pareto3D({ points }) {
-  const mountRef = useRef(null);
-
-  useEffect(() => {
-    if (!mountRef.current || !points || points.length === 0) return;
-
-    const width = mountRef.current.clientWidth;
-    const height = mountRef.current.clientHeight;
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0f0f0f);
-
-    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-    camera.position.z = 10;
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(width, height);
-    mountRef.current.innerHTML = '';
-    mountRef.current.appendChild(renderer.domElement);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-
-    // Grid Helpers
-    const gridHelper = new THREE.GridHelper(10, 10, 0x333333, 0x1a1a1a);
-    scene.add(gridHelper);
-
-    // Axes
-    const axesHelper = new THREE.AxesHelper(6);
-    scene.add(axesHelper);
-
-    // Labels (Simple sprites or spheres as placeholders)
-    // Scale points to fit in -5 to 5 range roughly
-    const scale = (val, max) => (val / max) * 10 - 5;
-    
-    const maxCost = Math.max(...points.map(p => p.cost)) || 1;
-    const maxTime = Math.max(...points.map(p => p.time)) || 1;
-    const maxCarbon = Math.max(...points.map(p => p.carbon)) || 1;
-
-    points.forEach((p, idx) => {
-      const geometry = new THREE.SphereGeometry(p.status === "Pareto Optimal" ? 0.2 : 0.1, 16, 16);
-      const material = new THREE.MeshPhongMaterial({ 
-        color: p.status === "Pareto Optimal" ? 0xf97316 : 0x4b5563,
-        transparent: true,
-        opacity: p.status === "Pareto Optimal" ? 1.0 : 0.4
-      });
-      const sphere = new THREE.Mesh(geometry, material);
-      
-      sphere.position.x = scale(p.cost, maxCost);
-      sphere.position.y = scale(p.time, maxTime);
-      sphere.position.z = scale(p.carbon, maxCarbon);
-      
-      scene.add(sphere);
-    });
-
-    const light = new THREE.PointLight(0xffffff, 1, 100);
-    light.position.set(10, 10, 10);
-    scene.add(light);
-    scene.add(new THREE.AmbientLight(0x404040));
-
-    const animate = () => {
-      requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    animate();
-
-    return () => {
-      renderer.dispose();
-      if (mountRef.current) mountRef.current.innerHTML = '';
-    };
-  }, [points]);
-
+function CongestionBar({ value, max = 100 }) {
+  const pct = Math.min((value / max) * 100, 100);
+  const color = pct > 60 ? '#ef4444' : pct > 30 ? '#eab308' : '#10b981';
   return (
-    <div className="relative w-full h-full bg-[#0F0F0F] rounded-lg border border-[#2A2A2A] overflow-hidden">
-        <div ref={mountRef} className="w-full h-full" />
-        <div className="absolute top-4 left-4 z-10 bg-[#1A1A1A]/80 p-3 rounded border border-[#374151] text-[12px] pointer-events-none">
-            <h4 className="text-[#F97316] font-bold mb-2 uppercase tracking-widest">3D Pareto Visualization</h4>
-            <div className="flex items-center gap-2 mb-1"><div className="w-3 h-3 rounded-full bg-[#F97316]"></div> <span>Pareto Optimal</span></div>
-            <div className="flex items-center gap-2 mb-1"><div className="w-3 h-3 rounded-full bg-[#4B5563]"></div> <span>Dominated</span></div>
-            <div className="mt-3 text-[#9CA3AF] font-mono">X: Cost | Y: Time | Z: Carbon</div>
-        </div>
+    <div className="congestion-bar mt-1.5">
+      <div className="congestion-bar-fill" style={{ width: `${pct}%`, backgroundColor: color }} />
     </div>
   );
 }
@@ -114,392 +44,392 @@ function Pareto3D({ points }) {
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [socket, setSocket] = useState(null);
-  const [state, setState] = useState({ mode: 'simulation', hardware_connected: false, simulation_running: false });
-  const [metrics, setMetrics] = useState({ 
-    cost: 0, delivery_time: 0, carbon: 0, status: 'Initializing', 
-    pbgb_runtime: 0, cumulative_carbon_saved: 0, static_vs_dynamic: { static: 0, dynamic: 0 } 
-  });
-  const [cnLayer, setCnLayer] = useState({ convergence_rounds: 0, udp_timestamp: "--", pdr: 0, routing_table: [] });
+  const [appState, setAppState] = useState({ mode:'simulation', hardware_connected:false, simulation_running:false });
+  const [metrics, setMetrics] = useState({ cost:0, delivery_time:0, carbon:0, status:'Initializing', pbgb_runtime:0, cumulative_carbon_saved:0, static_vs_dynamic:{static:0,dynamic:0}, dijkstra_time_ms:0, dfs_time_ms:0, total_routes_explored:0, active_route:'' });
+  const [cnLayer, setCnLayer] = useState({ convergence_rounds:0, udp_timestamp:'--', pdr:0, routing_table:[] });
   const [comparisonData, setComparisonData] = useState([]);
   const [paretoPoints, setParetoPoints] = useState([]);
   const [logs, setLogs] = useState([]);
   const [analyticsHistory, setAnalyticsHistory] = useState([]);
+  const [costBreakdown, setCostBreakdown] = useState([]);
+  const [carbonTimeline, setCarbonTimeline] = useState([]);
+  const [congestionSpikes, setCongestionSpikes] = useState([]);
+  const [routeDominance, setRouteDominance] = useState([]);
+  const [nodeSensors, setNodeSensors] = useState({});
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
-  const [decision, setDecision] = useState({ event: 'Awaiting Event...', action: 'Algorithm Initializing...' });
-  const [cyRef, useRefCy] = useState(null);
+  const [decision, setDecision] = useState({ event:'Awaiting...', action:'Initializing...', dijkstra_ms:0, dfs_ms:0, routes_explored:0, pareto_optimal:0 });
   const cyInstance = useRef(null);
 
-  // Scalability Data (Static Experiment 3 Reference)
   const scalabilityData = [
-    { n: 8, runtime: 180 }, { n: 12, runtime: 320 }, { n: 20, runtime: 850 },
-    { n: 30, runtime: 1900 }, { n: 40, runtime: 3400 }, { n: 50, runtime: 5200 }
+    { n:8, runtime:180 }, { n:12, runtime:320 }, { n:20, runtime:850 },
+    { n:30, runtime:1900 }, { n:40, runtime:3400 }, { n:50, runtime:5200 }
   ];
 
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date().toLocaleTimeString()), 1000);
-    return () => clearInterval(timer);
+    const t = setInterval(() => setCurrentTime(new Date().toLocaleTimeString()), 1000);
+    return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
-    const newSocket = io(SOCKET_URL);
-    setSocket(newSocket);
-
-    newSocket.on('update_state', setState);
-    newSocket.on('update_metrics', setMetrics);
-    newSocket.on('update_cn_layer', setCnLayer);
-    newSocket.on('update_comparison', setComparisonData);
-    newSocket.on('pareto_points', setParetoPoints);
-    newSocket.on('new_log', data => setLogs(prev => [data, ...prev].slice(0, 100)));
-    newSocket.on('analytics_update', setAnalyticsHistory);
-    newSocket.on('decision_summary', setDecision);
-
-    newSocket.on('update_network', (data) => {
-      if (cyInstance.current) {
-        cyInstance.current.json({ elements: data });
-        cyInstance.current.nodes().forEach(node => {
-          if (node.data('status') === 'congested') {
-            node.style({ 'background-color': '#DC2626', 'label': node.data('label'), 'border-width': 2, 'border-color': '#EF4444' });
-            node.addClass('pulse-red');
-          } else {
-            node.style({ 'background-color': '#2A2A2A', 'label': node.data('label'), 'border-width': 1, 'border-color': '#4B5563' });
-            node.removeClass('pulse-red');
-          }
+    const s = io(SOCKET_URL);
+    setSocket(s);
+    s.on('update_state', setAppState);
+    s.on('update_metrics', setMetrics);
+    s.on('update_cn_layer', setCnLayer);
+    s.on('update_comparison', setComparisonData);
+    s.on('pareto_points', setParetoPoints);
+    s.on('new_log', d => setLogs(prev => [d, ...prev].slice(0, 100)));
+    s.on('analytics_update', setAnalyticsHistory);
+    s.on('cost_breakdown', setCostBreakdown);
+    s.on('carbon_timeline', setCarbonTimeline);
+    s.on('congestion_spikes', setCongestionSpikes);
+    s.on('route_dominance', setRouteDominance);
+    s.on('node_sensors', setNodeSensors);
+    s.on('decision_summary', setDecision);
+    s.on('update_network', (data) => {
+      if (!cyInstance.current) return;
+      cyInstance.current.json({ elements: data });
+      cyInstance.current.nodes().forEach(node => {
+        const c = node.data('status') === 'congested';
+        node.style({
+          'background-color': c ? '#DC2626' : node.data('type')==='source' ? '#f97316' : node.data('type')==='destination' ? '#10b981' : '#1e1e2e',
+          'label': node.data('label'),
+          'border-width': c ? 3 : node.data('type')==='source'||node.data('type')==='destination' ? 2 : 1,
+          'border-color': c ? '#EF4444' : node.data('type')==='source' ? '#f97316' : node.data('type')==='destination' ? '#10b981' : '#333',
         });
-        cyInstance.current.edges().forEach((edge, idx) => {
-          if (edge.data('is_active')) {
-            edge.style({ 'line-color': '#F97316', 'width': 4, 'opacity': 1, 'z-index': 10 });
-            if (edge.data('penalty_applied')) {
-              edge.style({ 'label': `${edge.data('weight')} (1.5x Penalty)`, 'color': '#EF4444' });
-            } else {
-              edge.style({ 'label': edge.data('weight'), 'color': '#9CA3AF' });
-            }
-          } else {
-            edge.style({ 'line-color': '#2A2A2A', 'width': 1, 'opacity': 0.4, 'label': '', 'z-index': 1 });
-          }
-        });
-      }
+      });
+      cyInstance.current.edges().forEach(edge => {
+        if (edge.data('is_active')) {
+          edge.style({ 'line-color':'#F97316', 'width':4, 'opacity':1, 'z-index':10, 'label': edge.data('penalty_applied') ? `${edge.data('weight')} ⚠` : String(edge.data('weight')), 'color': edge.data('penalty_applied') ? '#EF4444' : '#aaa' });
+        } else {
+          edge.style({ 'line-color':'#1e1e2e', 'width':1.5, 'opacity':0.3, 'label':'', 'z-index':1 });
+        }
+      });
     });
-    return () => newSocket.close();
+    return () => s.close();
   }, []);
 
   useEffect(() => {
     if (activeTab === 'dashboard') {
-      const container = document.getElementById('cy');
-      if (container && !cyInstance.current) {
+      const el = document.getElementById('cy');
+      if (el && !cyInstance.current) {
         cyInstance.current = cytoscape({
-          container: container,
+          container: el,
           style: [
-            { selector: 'node', style: { 'background-color': '#2A2A2A', 'label': 'data(label)', 'color': '#E6E6E6', 'text-margin-y': -16, 'font-size': '11px', 'font-family': 'Rubik', 'font-weight': '600', 'text-outline-width': 0, 'text-background-color': '#1A1A1A', 'text-background-opacity': 0.9, 'text-background-padding': '4px', 'width': 22, 'height': 22 } },
-            { selector: 'edge', style: { 'width': 1, 'line-color': '#2A2A2A', 'curve-style': 'bezier', 'text-background-color': '#0F0F0F', 'text-background-opacity': 1, 'text-background-padding': '3px', 'color': '#9CA3AF', 'font-size': '10px', 'font-family': 'Rubik', 'edge-text-rotation': 'autorotate' } }
+            { selector:'node', style:{ 'background-color':'#1e1e2e', 'label':'data(label)', 'color':'#ccc', 'text-margin-y':-18, 'font-size':'11px', 'font-family':'Rubik', 'font-weight':'600', 'text-background-color':'#0a0a0f', 'text-background-opacity':0.9, 'text-background-padding':'4px', 'width':24, 'height':24, 'border-width':1, 'border-color':'#333' }},
+            { selector:'edge', style:{ 'width':1.5, 'line-color':'#1e1e2e', 'curve-style':'bezier', 'text-background-color':'#0a0a0f', 'text-background-opacity':1, 'text-background-padding':'3px', 'color':'#888', 'font-size':'10px', 'font-family':'monospace', 'edge-text-rotation':'autorotate' }}
           ],
-          layout: { name: 'preset' },
-          userZoomingEnabled: true, userPanningEnabled: true,
-          minZoom: 0.5, maxZoom: 3.0
+          layout: { name:'preset' },
+          userZoomingEnabled:true, userPanningEnabled:true, minZoom:0.4, maxZoom:3.5
         });
       }
     } else {
-      if (cyInstance.current) {
-        cyInstance.current.destroy();
-        cyInstance.current = null;
-      }
+      if (cyInstance.current) { cyInstance.current.destroy(); cyInstance.current = null; }
     }
   }, [activeTab]);
 
   const triggerSim = async (action) => {
-    await fetch(`${SOCKET_URL}/${action}`, { method: 'POST' });
-    setState(prev => ({ ...prev, simulation_running: action === 'start-simulation' }));
+    await fetch(`${SOCKET_URL}/${action}`, { method:'POST' });
+    setAppState(prev => ({ ...prev, simulation_running: action === 'start-simulation' }));
   };
 
-  const ChartTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-        return (
-          <div className="bg-[#1A1A1A] border border-[#2A2A2A] p-4 shadow-md rounded-md text-[13px] font-sans">
-            <p className="text-[#F97316] mb-2 font-bold">{label}</p>
-            <div className="space-y-1.5">
-              {payload.map((p, idx) => (
-                <div key={idx} className="flex items-center gap-3 justify-between">
-                  <span style={{ color: p.color }} className="font-medium">{p.name}:</span>
-                  <span className="text-[#E6E6E6] font-mono font-bold">{(p.value || 0).toFixed(1)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-    }
-    return null;
-  };
+  const tabs = [
+    { id:'dashboard', label:'Live Dashboard' },
+    { id:'pareto', label:'Pareto Space', icon: <Target size={15}/> },
+    { id:'analytics', label:'Analytics', icon: <BarChart2 size={15}/> },
+  ];
 
   return (
-    <div className="bg-[#0F0F0F] text-[#E6E6E6] font-sans min-h-screen flex flex-col overflow-y-auto custom-scroll relative">
+    <div className="bg-[#0a0a0f] text-[#E6E6E6] font-sans min-h-screen flex flex-col custom-scroll">
 
-      {/* 1. HEADER */}
-      <header className="bg-[#1A1A1A] border-b border-[#2A2A2A] px-10 py-6 flex items-center justify-between z-30 shrink-0 w-full relative">
-        <div className="flex items-center gap-4">
-          <Activity className="text-[#F97316]" size={36} />
+      {/* HEADER */}
+      <header className="bg-[#12121a] border-b border-[#1e1e2e] px-8 py-4 flex items-center justify-between shrink-0 relative">
+        <div className="accent-bar absolute top-0 left-0 right-0"></div>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-[#f97316] flex items-center justify-center">
+            <Activity className="text-white" size={20} />
+          </div>
           <div>
-            <h1 className="text-[30px] font-serif font-bold tracking-tight text-[#E6E6E6]">PBGB Routing Engine</h1>
-            <p className="text-[#9CA3AF] text-[12px] font-mono mt-[-4px]">Pareto-Bounded Greedy Dynamic Programming (Research System)</p>
+            <h1 className="text-[22px] font-serif font-bold tracking-tight">PBGB Routing Engine</h1>
+            <p className="text-[#555] text-[10px] font-mono">Pareto-Bounded Greedy DP · Eco Supply Chain</p>
           </div>
         </div>
-
-        <div className="flex items-center gap-6">
-          <div className="flex flex-col items-end mr-4">
-             <div className="text-[18px] text-[#F97316] font-mono font-bold">CO2 Saved: {(metrics.cumulative_carbon_saved || 0).toFixed(0)} g</div>
-             <div className="text-[11px] text-[#9CA3AF] uppercase tracking-widest font-bold">vs Baseline Dijkstra</div>
+        <div className="flex items-center gap-5">
+          <div className="text-right mr-2">
+            <div className="text-[14px] text-[#10b981] font-mono font-bold">CO₂ Saved: {(metrics.cumulative_carbon_saved||0).toFixed(0)}g</div>
+            <div className="text-[9px] text-[#555] uppercase tracking-widest">vs Baseline</div>
           </div>
-          <div className="text-[16px] text-[#9CA3AF] font-mono">{currentTime}</div>
-          <div className="w-px h-10 bg-[#2A2A2A]"></div>
-          <div className="flex items-center gap-3 px-4 py-2 rounded-md text-[14px] font-bold border bg-[#1A1A1A] border-[#2A2A2A]">
-            <Server size={18} className={state.simulation_running ? "text-[#10B981]" : "text-[#F97316]"} />
-            <span className="text-[#9CA3AF]">{state.simulation_running ? "Research Loop Active" : "Standby Mode"}</span>
+          <div className="text-[13px] text-[#555] font-mono tabular-nums">{currentTime}</div>
+          <div className="w-px h-7 bg-[#1e1e2e]"></div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] font-bold border border-[#1e1e2e] bg-[#12121a]">
+            <span className={`live-dot ${appState.simulation_running ? 'bg-[#10b981] live-dot-pulse' : 'bg-[#555]'}`}></span>
+            <span className="text-[#888]">{appState.simulation_running ? "Live" : "Standby"}</span>
           </div>
         </div>
       </header>
 
-      {/* 2. NAVIGATION BAR */}
-      <nav className="bg-[#0F0F0F] border-b border-[#2A2A2A] px-10 py-5 flex items-center justify-between z-20 sticky top-0 backdrop-blur-md bg-[#0F0F0F]/95">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setActiveTab('dashboard')} className={`px-6 py-3 text-[15px] font-bold rounded-md transition-all ${activeTab === 'dashboard' ? 'bg-[#2A2A2A] text-[#E6E6E6] border border-[#374151]' : 'text-[#9CA3AF] hover:text-[#E6E6E6]'}`}>Live Dashboard</button>
-          <button onClick={() => setActiveTab('pareto')} className={`px-6 py-3 text-[15px] font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'pareto' ? 'bg-[#2A2A2A] text-[#E6E6E6] border border-[#374151]' : 'text-[#9CA3AF] hover:text-[#E6E6E6]'}`}><Target size={18} /> Pareto Space</button>
-          <button onClick={() => setActiveTab('analytics')} className={`px-6 py-3 text-[15px] font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'analytics' ? 'bg-[#2A2A2A] text-[#E6E6E6] border border-[#374151]' : 'text-[#9CA3AF] hover:text-[#E6E6E6]'}`}><BarChart2 size={18} /> Research Analytics</button>
+      {/* NAV */}
+      <nav className="bg-[#0a0a0f] border-b border-[#1e1e2e] px-8 py-2.5 flex items-center justify-between sticky top-0 z-20 backdrop-blur-md bg-[#0a0a0f]/95">
+        <div className="flex items-center gap-1.5">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)}
+              className={`px-4 py-2 text-[12px] font-bold rounded transition-colors flex items-center gap-1.5 ${activeTab===t.id ? 'bg-[#1e1e2e] text-white' : 'text-[#555] hover:text-[#aaa]'}`}>
+              {t.icon}{t.label}
+            </button>
+          ))}
         </div>
-
-        <div className="flex items-center gap-4">
-          <div className="bg-[#1A1A1A] border border-[#2A2A2A] px-4 py-2 rounded text-[13px] font-bold text-[#F97316] shadow-inner">
-             Algo Runtime: <span className="font-mono">{metrics.pbgb_runtime} ms</span>
+        <div className="flex items-center gap-3">
+          <div className="bg-[#12121a] border border-[#1e1e2e] px-3 py-1.5 rounded text-[10px] font-mono text-[#888] flex items-center gap-2">
+            <span>Dijkstra <b className="text-[#f97316]">{metrics.dijkstra_time_ms}ms</b></span>
+            <span className="text-[#333]">·</span>
+            <span>DFS <b className="text-[#3b82f6]">{metrics.dfs_time_ms}ms</b></span>
+            <span className="text-[#333]">·</span>
+            <span><b className="text-[#10b981]">{metrics.total_routes_explored}</b> routes</span>
           </div>
-          <div className="flex gap-2">
-            <button disabled={state.simulation_running} onClick={() => triggerSim('start-simulation')} className={`flex items-center gap-2 px-6 py-2.5 rounded-md font-bold text-[14px] transition-all ${state.simulation_running ? 'bg-[#2A2A2A] text-[#6B7280] cursor-not-allowed' : 'bg-[#F97316] hover:bg-[#EA580C] text-[#0F0F0F] shadow-lg shadow-[#F97316]/20'}`}><Play size={16} fill="currentColor" /> START EXPERIMENT</button>
-            <button disabled={!state.simulation_running} onClick={() => triggerSim('stop-simulation')} className={`flex items-center gap-2 px-6 py-2.5 rounded-md font-bold text-[14px] transition-all border ${!state.simulation_running ? 'bg-[#2A2A2A] text-[#6B7280] cursor-not-allowed' : 'bg-[#1A1A1A] border-[#DC2626] text-[#DC2626] hover:bg-[#DC2626] hover:text-[#FFFFFF]'}`}><ZapOff size={16} fill="currentColor" /> TERMINATE</button>
-          </div>
+          <button disabled={appState.simulation_running} onClick={() => triggerSim('start-simulation')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded font-bold text-[11px] transition-colors ${appState.simulation_running ? 'bg-[#1e1e2e] text-[#555] cursor-not-allowed' : 'bg-[#f97316] text-white hover:bg-[#ea580c]'}`}>
+            <Play size={12} fill="currentColor"/> START
+          </button>
+          <button disabled={!appState.simulation_running} onClick={() => triggerSim('stop-simulation')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded font-bold text-[11px] transition-colors border ${!appState.simulation_running ? 'bg-[#1e1e2e] text-[#555] cursor-not-allowed border-[#1e1e2e]' : 'border-[#DC2626] text-[#DC2626] hover:bg-[#DC2626] hover:text-white'}`}>
+            <ZapOff size={12}/> STOP
+          </button>
         </div>
       </nav>
 
-      <div className="flex flex-col flex-1 w-full max-w-screen-2xl mx-auto p-10 gap-10">
+      <div className="flex-1 w-full max-w-[1600px] mx-auto p-7">
 
-        {/* DASHBOARD VIEW */}
+        {/* DASHBOARD */}
         {activeTab === 'dashboard' && (
-          <div className="flex flex-col gap-10">
-            <div className="grid grid-cols-12 gap-8 items-start">
-              
-              {/* Left Column (Stats & CN) */}
-              <div className="col-span-4 flex flex-col gap-8">
-                
-                {/* PBGB Real-time Insights */}
-                <div className="bg-[#1A1A1A] p-8 rounded-lg border border-[#2A2A2A] shadow-sm relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity"><TrendingUp size={120} /></div>
-                  <h2 className="text-[22px] font-serif font-bold text-[#E6E6E6] mb-6 pb-4 border-b border-[#2A2A2A] flex items-center gap-3"><Zap size={24} className="text-[#F97316]" /> PBGB Intelligent Insights</h2>
-                  <div className="space-y-6">
-                    <div className="bg-[#0F0F0F] p-5 rounded border border-[#2A2A2A]">
-                        <span className="text-[#9CA3AF] text-[11px] uppercase tracking-widest font-bold block mb-2">Experiment 1 (Carbon Integrity)</span>
-                        <div className="flex items-center justify-between gap-4">
-                            <div className="text-center w-1/2">
-                                <div className="text-[20px] font-bold text-[#E6E6E6]">{metrics.static_vs_dynamic.static}</div>
-                                <div className="text-[10px] text-[#9CA3AF]">STATIC ESTIMATE</div>
-                            </div>
-                            <div className="w-px h-10 bg-[#2A2A2A]"></div>
-                            <div className="text-center w-1/2">
-                                <div className="text-[20px] font-bold text-[#10B981]">{(metrics.static_vs_dynamic?.dynamic || 0).toFixed(1)}</div>
-                                <div className="text-[10px] text-[#10B981]">IOT REAL-TIME</div>
-                            </div>
+          <div className="flex flex-col gap-6 animate-fade-in">
+            <div className="grid grid-cols-12 gap-5">
+
+              {/* LEFT */}
+              <div className="col-span-4 flex flex-col gap-5">
+
+                {/* Engine Insights */}
+                <div className="bg-[#12121a] p-5 rounded-lg border border-[#1e1e2e]">
+                  <h2 className="text-[15px] font-serif font-bold mb-4 pb-3 border-b border-[#1e1e2e] flex items-center gap-2">
+                    <Zap size={16} className="text-[#F97316]"/> Engine Insights
+                  </h2>
+                  <div className="space-y-4">
+                    <div className="bg-[#0a0a0f] p-3.5 rounded border border-[#1e1e2e]">
+                      <span className="text-[#555] text-[9px] uppercase tracking-widest font-bold block mb-2">Static vs IoT Carbon</span>
+                      <div className="flex items-center justify-between">
+                        <div className="text-center flex-1">
+                          <div className="text-[17px] font-bold font-mono">{metrics.static_vs_dynamic.static}</div>
+                          <div className="text-[8px] text-[#555] mt-0.5">STATIC</div>
                         </div>
+                        <div className="w-px h-8 bg-[#1e1e2e]"></div>
+                        <div className="text-center flex-1">
+                          <div className="text-[17px] font-bold font-mono text-[#10B981]">{(metrics.static_vs_dynamic?.dynamic||0).toFixed(1)}</div>
+                          <div className="text-[8px] text-[#10B981] mt-0.5">IoT LIVE</div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                        <span className="text-[#9CA3AF] text-[11px] uppercase tracking-widest font-bold">Optimization Trigger</span>
-                        <p className="text-[15px] font-medium leading-relaxed">{decision.event}</p>
+                    <div className="px-1">
+                      <span className="text-[#555] text-[9px] uppercase tracking-widest font-bold">Last Trigger</span>
+                      <p className="text-[12px] mt-1 text-[#aaa]">{decision.event}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5 text-center">
+                      <div className="bg-[#0a0a0f] p-2.5 rounded border border-[#1e1e2e]">
+                        <div className="text-[15px] font-bold text-[#f97316] font-mono">{decision.pareto_optimal}</div>
+                        <div className="text-[8px] text-[#555] uppercase">Pareto Pts</div>
+                      </div>
+                      <div className="bg-[#0a0a0f] p-2.5 rounded border border-[#1e1e2e]">
+                        <div className="text-[15px] font-bold text-[#3b82f6] font-mono">{decision.routes_explored}</div>
+                        <div className="text-[8px] text-[#555] uppercase">Paths</div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* CN Layer Visibility Panel */}
-                <div className="bg-[#1A1A1A] p-8 rounded-lg border border-[#2A2A2A] shadow-sm">
-                  <h2 className="text-[22px] font-serif font-bold text-[#E6E6E6] mb-6 pb-4 border-b border-[#2A2A2A] flex items-center gap-3"><Network size={24} className="text-[#3B82F6]" /> CN Monitoring Layer</h2>
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="bg-[#0F0F0F] p-4 rounded border border-[#2A2A2A]">
-                        <div className="text-[18px] font-bold text-[#3B82F6]">{cnLayer.convergence_rounds}</div>
-                        <div className="text-[10px] text-[#9CA3AF] uppercase font-bold">DV Rounds</div>
+                {/* CN Monitor */}
+                <div className="bg-[#12121a] p-5 rounded-lg border border-[#1e1e2e]">
+                  <h2 className="text-[15px] font-serif font-bold mb-4 pb-3 border-b border-[#1e1e2e] flex items-center gap-2">
+                    <Network size={16} className="text-[#3B82F6]"/> CN Monitor
+                  </h2>
+                  <div className="grid grid-cols-2 gap-2.5 mb-3">
+                    <div className="bg-[#0a0a0f] p-2.5 rounded border border-[#1e1e2e]">
+                      <div className="text-[15px] font-bold text-[#3B82F6] font-mono">{cnLayer.convergence_rounds}</div>
+                      <div className="text-[8px] text-[#555] uppercase font-bold">DV Rounds</div>
                     </div>
-                    <div className="bg-[#0F0F0F] p-4 rounded border border-[#2A2A2A]">
-                        <div className="text-[18px] font-bold text-[#10B981]">{cnLayer.pdr}%</div>
-                        <div className="text-[10px] text-[#9CA3AF] uppercase font-bold">Packet Rate</div>
+                    <div className="bg-[#0a0a0f] p-2.5 rounded border border-[#1e1e2e]">
+                      <div className="text-[15px] font-bold text-[#10B981] font-mono">{cnLayer.pdr}%</div>
+                      <div className="text-[8px] text-[#555] uppercase font-bold">PDR</div>
                     </div>
                   </div>
-                  <div className="space-y-3">
-                    <div className="text-[12px] text-[#9CA3AF] font-bold uppercase mb-2 flex justify-between items-center">
-                        <span>Active Routing Data</span>
-                        <span className="font-mono text-[10px] bg-[#2A2A2A] px-2 rounded">Last Broadcast: {cnLayer.udp_timestamp}</span>
-                    </div>
-                    {cnLayer.routing_table.map((row, i) => (
-                        <div key={i} className="flex items-center justify-between text-[13px] font-mono bg-[#0F0F0F]/50 p-2 border-b border-[#2A2A2A]/50">
-                            <span className="text-[#3B82F6] font-bold">{row.node}</span>
-                            <span className="text-[#9CA3AF]">→</span>
-                            <span className="text-[#E6E6E6]">{row.next}</span>
-                            <span className="text-[#F97316] font-bold">₹{row.cost}</span>
-                        </div>
+                  <div className="text-[9px] text-[#555] font-bold uppercase mb-1.5 flex justify-between">
+                    <span>Routing Table</span>
+                    <span className="font-mono text-[8px]">@{cnLayer.udp_timestamp}</span>
+                  </div>
+                  <div className="space-y-1">
+                    {cnLayer.routing_table.map((r, i) => (
+                      <div key={i} className="flex items-center justify-between text-[11px] font-mono bg-[#0a0a0f] p-2 rounded">
+                        <span className="text-[#3B82F6] font-bold">{r.node}</span>
+                        <span className="text-[#333]">→</span>
+                        <span className="text-[#ccc]">{r.next}</span>
+                        <span className="text-[#F97316] font-bold">₹{r.cost}</span>
+                      </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Economic Breakdown */}
-                <div className="bg-[#1A1A1A] p-8 rounded-lg border border-[#374151] shadow-2xl relative">
-                  <div className="absolute top-0 right-0 bg-[#F97316] text-[#0F0F0F] font-bold text-[10px] px-3 py-1 rounded-bl uppercase">Active Route Weight</div>
-                  <h2 className="text-[22px] font-serif font-bold text-[#E6E6E6] mb-8 pb-4 border-b border-[#2A2A2A] flex items-center gap-3"><IndianRupee size={24} className="text-[#F97316]" /> Multi-Objective Matrix</h2>
-                  <div className="space-y-6">
-                    <div className="flex justify-between items-baseline"><span className="text-[#9CA3AF] font-medium">Cost Objective</span> <span className="text-[24px] font-bold text-[#E6E6E6] font-mono">{formatINR(metrics.cost)}</span></div>
-                    <div className="flex justify-between items-baseline"><span className="text-[#9CA3AF] font-medium">Time Objective</span> <span className="text-[20px] font-bold text-[#E6E6E6] font-mono">{(metrics.delivery_time || 0).toFixed(1)} m</span></div>
-                    <div className="flex justify-between items-baseline"><span className="text-[#9CA3AF] font-medium">Carbon Objective</span> <span className="text-[20px] font-bold text-[#10B981] font-mono">{(metrics.carbon || 0).toFixed(0)} CO2 g</span></div>
+                {/* Sensor Matrix */}
+                <div className="bg-[#12121a] p-5 rounded-lg border border-[#1e1e2e]">
+                  <h2 className="text-[15px] font-serif font-bold mb-4 pb-3 border-b border-[#1e1e2e] flex items-center gap-2">
+                    <Cpu size={16} className="text-[#a855f7]"/> Sensor Matrix
+                    <span className="ml-auto text-[9px] font-mono text-[#555]">{Object.keys(nodeSensors).length} nodes</span>
+                  </h2>
+                  <div className="space-y-2">
+                    {Object.entries(nodeSensors).map(([id, s]) => {
+                      const cong = typeof s.congestion_level === 'number' ? s.congestion_level : 0;
+                      return (
+                      <div key={id} className={`bg-[#0a0a0f] p-2.5 rounded border ${cong > 45 ? 'border-[#ef4444]/30' : 'border-[#1e1e2e]'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-[#ccc]">Node {id}</span>
+                          <span className={`text-[9px] font-bold ${cong > 45 ? 'text-[#ef4444]' : 'text-[#10b981]'}`}>
+                            {cong > 45 ? '⚠ CONGESTED' : 'NORMAL'}
+                          </span>
+                        </div>
+                        <CongestionBar value={cong} />
+                        <div className="grid grid-cols-3 gap-1 text-center text-[9px] mt-1.5">
+                          <div><span className="font-mono text-[#aaa]">{s.temperature}°</span><div className="text-[#444]">Temp</div></div>
+                          <div><span className="font-mono text-[#aaa]">{cong.toFixed?.(1) ?? cong}</span><div className="text-[#444]">Cong</div></div>
+                          <div><span className="font-mono text-[#aaa]">{s.carbon_factor}×</span><div className="text-[#444]">CO₂</div></div>
+                        </div>
+                      </div>
+                      );
+                    })}
                   </div>
+                </div>
+
+                {/* Objective Matrix */}
+                <div className="bg-[#12121a] p-5 rounded-lg border border-[#1e1e2e] relative">
+                  <div className="absolute top-0 right-0 bg-[#f97316] text-white font-bold text-[8px] px-2 py-0.5 rounded-bl uppercase">Active</div>
+                  <h2 className="text-[15px] font-serif font-bold mb-4 pb-3 border-b border-[#1e1e2e] flex items-center gap-2">
+                    <IndianRupee size={16} className="text-[#F97316]"/> Objective Matrix
+                  </h2>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center"><span className="text-[#888] text-[12px]">Cost</span><span className="text-[17px] font-bold font-mono">{formatINR(metrics.cost)}</span></div>
+                    <div className="flex justify-between items-center"><span className="text-[#888] text-[12px]">Time</span><span className="text-[17px] font-bold font-mono text-[#3b82f6]">{(metrics.delivery_time||0).toFixed(1)} min</span></div>
+                    <div className="flex justify-between items-center"><span className="text-[#888] text-[12px]">Carbon</span><span className="text-[17px] font-bold font-mono text-[#10B981]">{(metrics.carbon||0).toFixed(0)} CO₂g</span></div>
+                  </div>
+                  {metrics.active_route && (
+                    <div className="mt-3 p-2.5 rounded bg-[#0a0a0f] border border-[#1e1e2e] text-[10px] font-mono text-[#f97316]">
+                      <Route size={11} className="inline mr-1"/> {metrics.active_route}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Center/Right Column (Map & Logic) */}
-              <div className="col-span-8 flex flex-col gap-8">
-                
-                {/* Visual Grid Map */}
-                <div className="bg-[#1A1A1A] h-[550px] relative rounded-lg border border-[#2A2A2A] shadow-lg overflow-hidden group">
-                  <div className="absolute top-6 left-6 z-20 bg-[#0F0F0F]/90 backdrop-blur px-6 py-3 rounded border border-[#374151] shadow-xl">
-                    <h2 className="text-[18px] font-serif font-bold text-[#E6E6E6] flex items-center gap-3"><Network size={20} className="text-[#F97316]" /> Logistics Network Visualization</h2>
+              {/* RIGHT */}
+              <div className="col-span-8 flex flex-col gap-5">
+
+                {/* Network Map */}
+                <div className="bg-[#12121a] h-[500px] relative rounded-lg border border-[#1e1e2e] overflow-hidden">
+                  <div className="absolute top-4 left-4 z-20 bg-[#12121a]/90 backdrop-blur px-4 py-2 rounded border border-[#1e1e2e]">
+                    <h2 className="text-[14px] font-serif font-bold flex items-center gap-2">
+                      <Network size={15} className="text-[#F97316]"/> Network Topology
+                      {appState.simulation_running && <span className="live-dot bg-[#10b981] live-dot-pulse ml-1.5"></span>}
+                    </h2>
+                  </div>
+                  <div className="absolute top-4 right-4 z-20 bg-[#12121a]/90 backdrop-blur px-3 py-1.5 rounded border border-[#1e1e2e] text-[9px] font-mono text-[#666]">
+                    7 nodes · 14 edges
                   </div>
                   <div className="network-grid absolute inset-0 z-0"></div>
-                  <div id="cy" className="absolute inset-0 z-10 w-full h-full cursor-all-scroll active:scale-x-[1.01] transition-transform duration-500"></div>
+                  <div id="cy" className="absolute inset-0 z-10 w-full h-full"></div>
                 </div>
 
-                {/* Algorithm Narration & Logs */}
-                <div className="grid grid-cols-2 gap-8">
-                    <div className="bg-[#1A1A1A] p-8 rounded-lg border border-[#2A2A2A] shadow-sm flex flex-col">
-                        <h2 className="text-[20px] font-serif font-bold text-[#E6E6E6] mb-6 pb-4 border-b border-[#2A2A2A] flex items-center gap-3"><RefreshCw size={22} className="text-[#10B981]" /> PBGB Phase Narration</h2>
-                        <div className="space-y-4 flex-1 overflow-y-auto font-mono text-[13px] custom-scroll">
-                            {logs.map((log, idx) => (
-                                <div key={idx} className="flex gap-4 border-l-2 border-[#F97316]/30 pl-4 py-1">
-                                    <span className="text-[#F97316] opacity-80 shrink-0 font-bold">{log.message.includes("Phase") ? "LOG" : "EVT"}</span>
-                                    <span className={log.message.includes("Phase") ? "text-[#E6E6E6]" : "text-[#10B981]"}>{log.message}</span>
-                                </div>
-                            ))}
+                {/* Logs + Comparison */}
+                <div className="grid grid-cols-2 gap-5">
+                  <div className="bg-[#12121a] p-5 rounded-lg border border-[#1e1e2e] flex flex-col max-h-[350px]">
+                    <h2 className="text-[14px] font-serif font-bold mb-3 pb-2.5 border-b border-[#1e1e2e] flex items-center gap-2 shrink-0">
+                      <RefreshCw size={14} className="text-[#10B981]"/> Phase Narration
+                    </h2>
+                    <div className="space-y-1 flex-1 overflow-y-auto custom-scroll font-mono text-[10px]">
+                      {logs.map((log, i) => (
+                        <div key={`${log.timestamp}-${i}`} className="flex gap-2 border-l-2 border-[#1e1e2e] pl-2.5 py-0.5">
+                          <span className={`shrink-0 font-bold text-[9px] ${log.message.includes("Phase") ? "text-[#f97316]" : "text-[#10B981]"}`}>
+                            {log.message.includes("Phase") ? "LOG" : "EVT"}
+                          </span>
+                          <span className={log.message.includes("Phase") ? "text-[#aaa]" : "text-[#10B981]"}>{log.message}</span>
                         </div>
+                      ))}
                     </div>
+                  </div>
 
-                    <div className="bg-[#1A1A1A] p-8 rounded-lg border border-[#2A2A2A] shadow-sm flex flex-col">
-                        <h2 className="text-[20px] font-serif font-bold text-[#E6E6E6] mb-6 pb-4 border-b border-[#2A2A2A] flex items-center gap-3"><Layers size={22} className="text-[#3B82F6]" /> Experiment Comparison</h2>
-                        <div className="flex-1 min-h-[200px]">
-                            <ResponsiveContainer width="100%" height={240}>
-                                <BarChart data={comparisonData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" vertical={false} />
-                                    <XAxis dataKey="name" stroke="#9CA3AF" fontSize={9} tickLine={false} axisLine={false} />
-                                    <YAxis hide />
-                                    <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: '#2A2A2A', opacity: 0.2 }} />
-                                    <Legend wrapperStyle={{ fontSize: '11px', marginTop: '10px' }} />
-                                    <Bar dataKey="cost" name="Cost" fill="#F97316" radius={[2, 2, 0, 0]} />
-                                    <Bar dataKey="carbon" name="Carbon" fill="#10B981" radius={[2, 2, 0, 0]} />
-                                    <Bar dataKey="time" name="Time" fill="#3B82F6" radius={[2, 2, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
+                  <div className="bg-[#12121a] p-5 rounded-lg border border-[#1e1e2e] flex flex-col">
+                    <h2 className="text-[14px] font-serif font-bold mb-3 pb-2.5 border-b border-[#1e1e2e] flex items-center gap-2 shrink-0">
+                      <Layers size={14} className="text-[#3B82F6]"/> Algorithm Comparison
+                    </h2>
+                    <div className="flex-1 min-h-[200px]">
+                      <ResponsiveContainer width="100%" height={240}>
+                        <BarChart data={comparisonData} margin={{ top:10, right:0, left:0, bottom:0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1e1e2e" vertical={false}/>
+                          <XAxis dataKey="name" stroke="#555" fontSize={9} tickLine={false} axisLine={false}/>
+                          <YAxis hide/>
+                          <RTooltip content={<ChartTooltip/>} cursor={{ fill:'#1e1e2e', opacity:0.3 }}/>
+                          <Legend wrapperStyle={{ fontSize:'10px' }}/>
+                          <Bar dataKey="cost" name="Cost" fill="#F97316" radius={[3,3,0,0]}/>
+                          <Bar dataKey="carbon" name="Carbon" fill="#10B981" radius={[3,3,0,0]}/>
+                          <Bar dataKey="time" name="Time" fill="#3B82F6" radius={[3,3,0,0]}/>
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* PARETO VIEW */}
+        {/* PARETO */}
         {activeTab === 'pareto' && (
-          <div className="flex flex-col gap-10 h-[800px]">
-            <div className="bg-[#1A1A1A] p-10 rounded-lg border border-[#2A2A2A] shadow-2xl flex flex-col flex-1">
-                <div className="flex justify-between items-center mb-8 border-b border-[#2A2A2A] pb-6">
-                    <div>
-                        <h2 className="text-[32px] font-serif font-bold text-[#E6E6E6]">Search Space Multi-Objective Pareto Frontier</h2>
-                        <p className="text-[#9CA3AF] font-mono text-[14px] mt-1">Figure 1: Visual mapping of {paretoPoints.length} explored routes in 3D objective space</p>
-                    </div>
-                    <div className="flex gap-10 text-right">
-                        <div><div className="text-[12px] text-[#9CA3AF] font-bold uppercase tracking-widest">Algorithm</div><div className="text-[20px] font-bold text-[#F97316]">PBGB Optimized</div></div>
-                        <div><div className="text-[12px] text-[#9CA3AF] font-bold uppercase tracking-widest">Pruning Rate</div><div className="text-[20px] font-bold text-[#E6E6E6]">88.4%</div></div>
-                    </div>
+          <div className="flex flex-col gap-6 animate-fade-in" style={{height:'calc(100vh - 160px)'}}>
+            <div className="bg-[#12121a] p-7 rounded-lg border border-[#1e1e2e] flex flex-col flex-1">
+              <div className="flex justify-between items-center mb-5 pb-4 border-b border-[#1e1e2e]">
+                <div>
+                  <h2 className="text-[24px] font-serif font-bold">Multi-Objective Pareto Frontier</h2>
+                  <p className="text-[#555] font-mono text-[11px] mt-1">{paretoPoints.length} routes in 3D objective space</p>
                 </div>
-                <div className="flex-1 min-h-[500px]">
-                    <Pareto3D points={paretoPoints} />
+                <div className="flex gap-6 text-right">
+                  <div><div className="text-[9px] text-[#555] font-bold uppercase tracking-widest">Algorithm</div><div className="text-[16px] font-bold text-[#F97316]">PBGB</div></div>
+                  <div><div className="text-[9px] text-[#555] font-bold uppercase tracking-widest">Pruning</div><div className="text-[16px] font-bold">88.4%</div></div>
                 </div>
-                <div className="mt-8 grid grid-cols-4 gap-6">
-                    <div className="bg-[#0F0F0F] p-5 rounded border border-[#2A2A2A]">
-                        <h4 className="text-[#9CA3AF] font-bold text-[11px] uppercase mb-2">Cost Convergence</h4>
-                        <p className="text-[14px] leading-relaxed">PBGB achieves global minimum through exhaustive DP budget search.</p>
-                    </div>
-                    <div className="bg-[#0F0F0F] p-5 rounded border border-[#2A2A2A]">
-                        <h4 className="text-[#9CA3AF] font-bold text-[11px] uppercase mb-2">Time Resiliency</h4>
-                        <p className="text-[14px] leading-relaxed">Latency vectors are pruned if they exceed 1.2x of the theoretical optimum.</p>
-                    </div>
-                    <div className="bg-[#0F0F0F] p-5 rounded border border-[#2A2A2A]">
-                        <h4 className="text-[#9CA3AF] font-bold text-[11px] uppercase mb-2">Carbon Awareness</h4>
-                        <p className="text-[14px] leading-relaxed">Non-dominated clusters identified with 0.95 confidence via sensor updates.</p>
-                    </div>
-                    <div className="bg-[#0F0F0F] p-5 rounded border border-[#2A2A2A]">
-                        <h4 className="text-[#9CA3AF] font-bold text-[11px] uppercase mb-2">B&B Pruning</h4>
-                        <p className="text-[14px] leading-relaxed">Sub-optimal branches are eliminated using emission-ratio lower bounds.</p>
-                    </div>
-                </div>
+              </div>
+              <div className="flex-1 min-h-[400px]">
+                <Pareto3D points={paretoPoints} />
+              </div>
+              <div className="mt-5 grid grid-cols-4 gap-3">
+                {[
+                  { t:'Cost Convergence', d:'DP budget search achieves global minimum.' },
+                  { t:'Time Resiliency', d:'Vectors pruned if >1.2× theoretical optimum.' },
+                  { t:'Carbon Awareness', d:'Non-dominated clusters with 0.95 confidence.' },
+                  { t:'B&B Pruning', d:'Emission-ratio lower bounds eliminate branches.' }
+                ].map((c, i) => (
+                  <div key={i} className="bg-[#0a0a0f] p-3 rounded border border-[#1e1e2e]">
+                    <h4 className="text-[#555] font-bold text-[9px] uppercase mb-1">{c.t}</h4>
+                    <p className="text-[11px] text-[#888]">{c.d}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
 
-        {/* ANALYTICS VIEW */}
+        {/* ANALYTICS */}
         {activeTab === 'analytics' && (
-          <div className="flex flex-col gap-10">
-            <div className="grid grid-cols-2 gap-10">
-              {/* Scalability Chart */}
-              <div className="bg-[#1A1A1A] p-10 rounded-lg border border-[#2A2A2A] shadow-sm">
-                <h2 className="text-[24px] font-serif font-bold text-[#E6E6E6] mb-8 pb-4 border-b border-[#2A2A2A]">Experiment 3: Algorithmic Scalability Analysis</h2>
-                <div className="h-[350px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={scalabilityData} margin={{ top: 20, right: 30, left: 30, bottom: 20 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" vertical={false} />
-                            <XAxis dataKey="n" label={{ value: 'Number of Nodes (n)', position: 'insideBottom', offset: -10, fill: '#9CA3AF', fontSize: 12 }} stroke="#9CA3AF" />
-                            <YAxis label={{ value: 'Runtime (ms)', angle: -90, position: 'insideLeft', fill: '#9CA3AF', fontSize: 12 }} stroke="#9CA3AF" />
-                            <RechartsTooltip cursor={{ stroke: '#F97316', strokeWidth: 1 }} />
-                            <Line type="monotone" dataKey="runtime" name="Runtime Complexity" stroke="#F97316" strokeWidth={3} dot={{ r: 6, fill: '#F97316' }} activeDot={{ r: 8 }} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </div>
-                <div className="mt-8 p-5 bg-[#0F0F0F] rounded border-l-4 border-[#F97316] font-mono text-[14px]">
-                    <span className="text-[#F97316] font-bold">Analysis:</span> Runtime growth follows the calculated O(n² · K) complexity curve, validating efficiency for high-density logistics grids.
-                </div>
-              </div>
-
-              {/* Route Consistency */}
-              <div className="bg-[#1A1A1A] p-10 rounded-lg border border-[#2A2A2A] shadow-sm">
-                <h2 className="text-[24px] font-serif font-bold text-[#E6E6E6] mb-8 pb-4 border-b border-[#2A2A2A]">Optimization Cycle Health</h2>
-                <div className="h-[350px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={analyticsHistory} margin={{ top: 20, right: 30, left: 30, bottom: 20 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" vertical={false} />
-                            <XAxis dataKey="time" stroke="#9CA3AF" fontSize={11} axisLine={false} tickLine={false} />
-                            <YAxis stroke="#9CA3AF" fontSize={11} axisLine={false} tickLine={false} />
-                            <RechartsTooltip content={<ChartTooltip />} />
-                            <Line type="stepAfter" dataKey="pbgb_runtime" name="Compute Latency" stroke="#3B82F6" strokeWidth={2} dot={false} />
-                            <Line type="monotone" dataKey="cost" name="Cost Matrix" stroke="#F97316" strokeWidth={2} dot={false} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </div>
-                <div className="mt-8 grid grid-cols-3 gap-6">
-                    <div className="text-center"><div className="text-[20px] font-bold text-[#E6E6E6]">0.84s</div><div className="text-[10px] text-[#9CA3AF] uppercase">Avg Loop Speed</div></div>
-                    <div className="text-center"><div className="text-[20px] font-bold text-[#10B981]">99.2%</div><div className="text-[10px] text-[#9CA3AF] uppercase">Optimization Purity</div></div>
-                    <div className="text-center"><div className="text-[20px] font-bold text-[#3B82F6]">1.2ms</div><div className="text-[10px] text-[#9CA3AF] uppercase">Per Vertex Search</div></div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <AnalyticsDashboard
+            analyticsHistory={analyticsHistory}
+            costBreakdown={costBreakdown}
+            carbonTimeline={carbonTimeline}
+            congestionSpikes={congestionSpikes}
+            routeDominance={routeDominance}
+            scalabilityData={scalabilityData}
+          />
         )}
-
       </div>
-      
-      {/* GLOW EFFECTS FOR DEMO */}
-      <style>{`
-        .network-grid { background-image: radial-gradient(#2A2A2A 1px, transparent 1px); background-size: 30px 30px; }
-        .pulse-red { animation: pulseRed 2s infinite; }
-        @keyframes pulseRed { 0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); } }
-        .custom-scroll::-webkit-scrollbar { width: 6px; }
-        .custom-scroll::-webkit-scrollbar-track { background: #0f0f0f; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 10px; }
-        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #374151; }
-      `}</style>
     </div>
   );
 }
